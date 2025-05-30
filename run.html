@@ -151,34 +151,43 @@ const doubleTap = {
     },
 
     /* ---------- druhý tap ---------- */
-    {
-      type: jsPsychHtmlButtonResponse,
-      stimulus: '',
-      choices: [''],
-      button_html: invisibleBtn,
-      data: {
-        tap: 2,
-        time: () => jsPsych.timelineVariable('time')
-      },
-      on_finish: d => {
-        const elapsed = (performance.now() - tapStart) / 1000;  // s
-        d.measured    = elapsed;
-        absDiff       = Math.abs(elapsed - targetNow);
-        log(`Druhý tap — naměřeno ${elapsed.toFixed(3)}s; odchylka ${absDiff.toFixed(3)}s`);
-      }
-    },
+{
+  type: jsPsychHtmlButtonResponse,
+  stimulus: '',
+  choices: [''],
+  button_html: invisibleBtn,
+  data: {
+    tap: 2,
+    time: () => jsPsych.timelineVariable('time')
+  },
+  on_finish: d => {
+    const elapsed   = (performance.now() - tapStart) / 1000;   // s
+    d.measured      = elapsed;
+
+    signedDiff = elapsed - targetNow;      // >0 = pomalejší, <0 = rychlejší
+    absDiff    = Math.abs(signedDiff);     // pro emoji
+
+    log(`Druhý tap — naměřeno ${elapsed.toFixed(3)} s; `
+        + (signedDiff >= 0 ? 'pomalejší o ' : 'rychlejší o ')
+        + `${absDiff.toFixed(3)} s`);
+  }
+},
 
     /* ---------- okamžitá zpětná vazba ---------- */
-    {
-      type: jsPsychHtmlButtonResponse,
-      stimulus: () => {
-        const diff = absDiff ?? 0;
-        return `<p>Cílový interval: <strong>${targetNow.toFixed(2)}&nbsp;s</strong><br>
-                Vaše odchylka: <strong>${diff.toFixed(3)}&nbsp;s</strong>
-                ${feedbackEmoji(diff)}</p>`;
-      },
-      choices: ['Pokračovat']
-    }
+{
+  type: jsPsychHtmlButtonResponse,
+  stimulus: () => {
+    const diff = signedDiff ?? 0;
+    const dir  = diff > 0 ? 'pomaleji' : diff < 0 ? 'rychleji' : 'přesně';
+    const msg  = diff === 0
+      ? 'Přesně na čas 🎯'
+      : `Byli jste o&nbsp;<strong>${Math.abs(diff).toFixed(3)} s</strong> ${dir}.`;
+
+    return `<p>Cílový interval: <strong>${targetNow.toFixed(2)} s</strong><br>${msg}<br>
+            ${feedbackEmoji(Math.abs(diff))}</p>`;
+  },
+  choices: ['Pokračovat']
+}
   ]
 };
 
