@@ -17,15 +17,10 @@ tar_option_set(
 tar_source()
 # tar_source("other_functions.R") # Source other scripts as needed.
 
+jatos_root <- Sys.getenv("jatos_dir") # Check if JATOS_URL is set in the environment.
+study_dir <- file.path(jatos_root, "doubletap")
+
 # Replace the target list below with your own:
 list(
-  tar_target(
-    name = data,
-    command = tibble(x = rnorm(100), y = rnorm(100))
-    # format = "qs" # Efficient storage for general data objects.
-  ),
-  tar_target(
-    name = model,
-    command = coefficients(lm(y ~ x, data = data))
-  )
+  tar_target(jatos_files,command = copy_to_jatos(study_dir),cue = tar_cue("always"))
 )

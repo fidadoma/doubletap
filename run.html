@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dvojtapový Časovací Úkol</title>
+
+  <!-- JATOS (jen na serveru) -->
+  <script src="jatos.js"></script>
+
+  <!-- jsPsych v7 -->
+  <link href="jspsych/jspsych.css" rel="stylesheet" />
+  <script src="jspsych/jspsych.js"></script>
+  <script src="jspsych/plugin-html-button-response.js"></script>
+
+  <style>
+  /* základní typografie a odsazení */
+  body {
+    font-family: sans-serif;
+    margin: 16px;
+    font-size: 1.2rem;          /* fallback pro starší prohlížeče */
+  }
+
+  /* zvětšení textu uvnitř všech jsPsych trialů */
+  .jspsych-display-element,
+  .jspsych-content {
+    font-size: 1.35rem;         /* ≈ 21 px na mobilu */
+    line-height: 1.4;
+  }
+
+  /* odstavce */
+  p { margin: .4em 0; }
+
+  /* nadpisy */
+  h2 {
+    font-size: 1.9rem;          /* ≈ 30 px */
+    margin-bottom: .6em;
+  }
+
+  /* pohodlná velká tlačítka */
+  .jspsych-btn {
+    font-size: 1.5rem;          /* ≈ 24 px */
+    padding: 1.2em 2.2em;
+    border-radius: 14px;
+  }
+</style>
+</head>
+<body>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* 0)  Utility: konzolové logování                                     */
+function log(...a) { console.log('[DOUBLE-TAP]', ...a); }
+
+/* ------------------------------------------------------------------ */
+/* 1)  Běžíme na JATOSu?                                               */
+const runOnServer = (typeof jatos !== 'undefined');
+log('Stránka načtena — JATOS =', runOnServer);
+
+/* ------------------------------------------------------------------ */
+/* 2)  Inicializace jsPsych                                            */
+const jsPsych = initJsPsych({
+  on_finish: () => {
+    log('Experiment dokončen. Řádků v databázi:', jsPsych.data.get().count());
+    if (runOnServer) {
+      jatos.submitResultData(jsPsych.data.get().json());
+      jatos.endStudy();
+    } else {
+      jsPsych.data.displayData();
+    }
+  }
+});
+log('jsPsych v' + jsPsych.version + ' inicializován.');
+
+/* ------------------------------------------------------------------ */
+/* 3)  Parametry experimentu                                           */
+const NT_REPEATS = 4;                 // kolikrát každý interval
+const targetTimes = [1.23, 2.45];     // s
+const chosen      = jsPsych.randomization.sampleWithoutReplacement(targetTimes, 2);
+const timelineVars= chosen.flatMap(t => Array(NT_REPEATS).fill({ time: t }));
+log('Vybrané časy:', chosen, ' ×', NT_REPEATS);
+
+/* ------------------------------------------------------------------ */
+/* 4)  Neviditelné full-screen tlačítko                                */
+const invisibleBtn =
+  '<button class="jspsych-btn" ' +
+  'style="opacity:0;position:fixed;top:0;left:0;width:100vw;height:100vh;' +
+  'border:none;"></button>';
+
+/* ------------------------------------------------------------------ */
+/* 5)  Instrukce                                                       */
+const instructions = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <h2>Instrukce</h2>
+    <p>V psychologickém výzkumu často používáme <em>reakční&nbsp;čas</em> jako
+       jedno z&nbsp;objektivních měřítek přesnosti.</p>
+    <p>V každém pokusu uvidíte cílový interval v&nbsp;sekundách.</p>
+    <p>Po kliknutí na <strong>Start</strong> máte až
+       <strong>10&nbsp;s</strong> na první kliknutí kdekoli na obrazovce.</p>
+    <p>Poté máte kliknout podruhé tak, abyste dosáhli cílového času.</p>
+    <p>Každý interval se opakuje 4×, celkem 8&nbsp;pokusů.</p>
+    <p>Ihned po druhém tapu uvidíte zpětnou vazbu, o&nbsp;kolik jste se
+       od cílového času odchýlili.</p>
+    <p>Jak přesně se dokážete trefit?</p>
+  `,
+  choices: ['Start'],
+  on_finish: () => log('Instrukce ukončeny; začínáme měření.')
+};
+
+/* ------------------------------------------------------------------ */
+/* 6)  Procedura pro jeden dvoj-tap                                    */
+let tapStart   = null;      // ms od navigation start
+let absDiff    = null;      // aktuální odchylka
+let targetNow  = null;      // aktuální cíl (s)
+
+/* funkce, která podle odchylky vrátí emoji */
+function feedbackEmoji(diff) {
+  if (diff < 0.05) return '🤩';          // super přesné
+  if (diff < 0.10) return '😄';          // velmi dobré
+  if (diff < 0.20) return '🙂';          // dobré
+  if (diff < 0.50) return '😐';          // neutrální
+  if (diff < 1.00) return '😕';          // mimo
+  return '😟';                           // hodně mimo
+}
+
+const doubleTap = {
+  timeline_variables: timelineVars,
+  randomize_order: true,
+  timeline: [
+
+    /* ---------- první tap ---------- */
+    {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: () => {
+        const t = jsPsych.timelineVariable('time').toFixed(2);
+        return `<p><strong>Cílový interval&nbsp;${t}&nbsp;s</strong><br>
+                ťukněte poprvé a počítejte…</p>`;
+      },
+      choices: [''],
+      button_html: invisibleBtn,
+      data: {
+        tap: 1,
+        time: () => jsPsych.timelineVariable('time')
+      },
+      on_finish: d => {
+        tapStart  = performance.now();
+        targetNow = d.time;
+        log(`První tap — cíl ${targetNow}s, čas ${tapStart.toFixed(1)}ms`);
+      }
+    },
+
+    /* ---------- druhý tap ---------- */
+    {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: '',
+      choices: [''],
+      button_html: invisibleBtn,
+      data: {
+        tap: 2,
+        time: () => jsPsych.timelineVariable('time')
+      },
+      on_finish: d => {
+        const elapsed = (performance.now() - tapStart) / 1000;  // s
+        d.measured    = elapsed;
+        absDiff       = Math.abs(elapsed - targetNow);
+        log(`Druhý tap — naměřeno ${elapsed.toFixed(3)}s; odchylka ${absDiff.toFixed(3)}s`);
+      }
+    },
+
+    /* ---------- okamžitá zpětná vazba ---------- */
+    {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: () => {
+        const diff = absDiff ?? 0;
+        return `<p>Cílový interval: <strong>${targetNow.toFixed(2)}&nbsp;s</strong><br>
+                Vaše odchylka: <strong>${diff.toFixed(3)}&nbsp;s</strong>
+                ${feedbackEmoji(diff)}</p>`;
+      },
+      choices: ['Pokračovat']
+    }
+  ]
+};
+
+/* ------------------------------------------------------------------ */
+/* 7)  Souhrn                                                          */
+function summaryEmoji(avg) {
+  if (avg < 0.05) return '🏆';
+  if (avg < 0.10) return '🤩';
+  if (avg < 0.20) return '😄';
+  if (avg < 0.50) return '🙂';
+  if (avg < 1.00) return '😐';
+  return '😕';
+}
+
+const results = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: () => {
+    const taps2 = jsPsych.data.get().filter({ tap: 2 }).values();
+    const byT   = {};
+
+    taps2.forEach(d => {
+      const key = d.time.toFixed(2);
+      const diff= Math.abs(d.measured - d.time);
+      (byT[key] = byT[key] || []).push(diff);
+    });
+
+    let html = '<h2>Souhrn odchylek</h2>';
+    for (const t in byT) {
+      const arr = byT[t];
+      const min = Math.min(...arr).toFixed(3);
+      const max = Math.max(...arr).toFixed(3);
+      const avg = (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(3);
+      html += `<p><strong>${t}&nbsp;s</strong> → min&nbsp;${min}s, max&nbsp;${max}s,
+               průměr&nbsp;${avg}s&nbsp;${summaryEmoji(parseFloat(avg))}</p>`;
+    }
+    return html;
+  },
+  choices: ['Dokončit'],
+  on_finish: () => log('Souhrn zobrazen — konec experimentu.')
+};
+
+/* ------------------------------------------------------------------ */
+/* 8)  Spuštění                                                        */
+log('Spouštím timeline…');
+jsPsych.run([instructions, doubleTap, results]);
+</script>
+
+</body>
+</html>
