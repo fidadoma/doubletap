@@ -1,2 +1,4 @@
-# doubletap
-Task for science fair - double tapping
+# Odhad kliknutí
+Dokážete se trefit s kliknutím do zadaného intervalu?
+
+[run.html](Začněte zde!)
